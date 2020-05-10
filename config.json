@@ -4,12 +4,12 @@
         "input_size":           416,
         "anchors":              [1.57,1.77, 2.80,8.62, 3.60,3.36, 5.51,10.50, 9.22,11.30],
         "max_box_per_image":    10,        
-        "labels":               ["helmet","person with helmet","person without helmet"]
+        "labels":               ["Person walking","Person sitting"]
     },
 
     "train": {
-        "train_image_folder":   "train_image_folder\\",
-        "train_annot_folder":   "train_annot_folder\\",     
+        "train_image_folder":   "/content/drive/My Drive/images for train/image/",
+        "train_annot_folder":   "/content/drive/My Drive/images for train/annotation/",     
           
         "train_times":          10,
         "pretrained_weights":   "",
@@ -23,7 +23,7 @@
         "coord_scale":          1.0,
         "class_scale":          1.0,
 
-        "saved_weights_name":   "full_yolo_helmet_and_person.h5",
+        "saved_weights_name":   "changedetection.h5",
         "debug":                true
     },
 
