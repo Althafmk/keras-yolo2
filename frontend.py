@@ -1,17 +1,19 @@
-from keras.models import Model
-from keras.layers import Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization, Flatten, Dense, Lambda
-from keras.layers.advanced_activations import LeakyReLU
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization, Flatten, Dense, Lambda
+from tensorflow.keras.layers import LeakyReLU
 import tensorflow as tf
 import numpy as np
 import os
 import cv2
 from utils import decode_netout, compute_overlap, compute_ap
-from keras.applications.mobilenet import MobileNet
-from keras.layers.merge import concatenate
-from keras.optimizers import SGD, Adam, RMSprop
+from tensorflow.keras.applications.mobilenet import MobileNet
+from tensorflow.keras.layers import concatenate
+from tensorflow.keras.optimizers import SGD, Adam, RMSprop
+#from tensorflow.keras.optimizers import Adam
 from preprocessing import BatchGenerator
-from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from backend import TinyYoloFeature, FullYoloFeature, MobileNetFeature, SqueezeNetFeature, Inception3Feature, VGG16Feature, ResNet50Feature
+tf.config.experimental_run_functions_eagerly(True)
 
 class YOLO(object):
     def __init__(self, backend,
@@ -86,7 +88,7 @@ class YOLO(object):
     def custom_loss(self, y_true, y_pred):
         mask_shape = tf.shape(y_true)[:4]
         
-        cell_x = tf.to_float(tf.reshape(tf.tile(tf.range(self.grid_w), [self.grid_h]), (1, self.grid_h, self.grid_w, 1, 1)))
+        cell_x = tf.cast(tf.reshape(tf.tile(tf.range(self.grid_w), [self.grid_h]), (1, self.grid_h, self.grid_w, 1, 1)),tf.float32)
         cell_y = tf.transpose(cell_x, (0,2,1,3,4))
 
         cell_grid = tf.tile(tf.concat([cell_x,cell_y], -1), [self.batch_size, 1, 1, self.nb_box, 1])
@@ -181,7 +183,7 @@ class YOLO(object):
         iou_scores  = tf.truediv(intersect_areas, union_areas)
 
         best_ious = tf.reduce_max(iou_scores, axis=4)
-        conf_mask = conf_mask + tf.to_float(best_ious < 0.6) * (1 - y_true[..., 4]) * self.no_object_scale
+        conf_mask = conf_mask + tf.compat.v1.to_float(tf.cast(best_ious < 0.6,tf.float32) * (1 - y_true[..., 4])) * self.no_object_scale
         
         # penalize the confidence of the boxes, which are reponsible for corresponding ground truth box
         conf_mask = conf_mask + y_true[..., 4] * self.object_scale
@@ -192,8 +194,8 @@ class YOLO(object):
         """
         Warm-up training
         """
-        no_boxes_mask = tf.to_float(coord_mask < self.coord_scale/2.)
-        seen = tf.assign_add(seen, 1.)
+        no_boxes_mask = tf.cast((coord_mask < self.coord_scale/2),tf.float32)
+        seen = tf.compat.v1.assign_add(seen, 1.)
         
         true_box_xy, true_box_wh, coord_mask = tf.cond(tf.less(seen, self.warmup_batches+1), 
                               lambda: [true_box_xy + (0.5 + cell_grid) * no_boxes_mask, 
@@ -208,9 +210,9 @@ class YOLO(object):
         """
         Finalize the loss
         """
-        nb_coord_box = tf.reduce_sum(tf.to_float(coord_mask > 0.0))
-        nb_conf_box  = tf.reduce_sum(tf.to_float(conf_mask  > 0.0))
-        nb_class_box = tf.reduce_sum(tf.to_float(class_mask > 0.0))
+        nb_coord_box = tf.reduce_sum(tf.cast(coord_mask > 0.0,tf.float32))
+        nb_conf_box  = tf.reduce_sum(tf.cast(conf_mask  > 0.0,tf.float32))
+        nb_class_box = tf.reduce_sum(tf.cast(class_mask > 0.0,tf.float32))
         
         loss_xy    = tf.reduce_sum(tf.square(true_box_xy-pred_box_xy)     * coord_mask) / (nb_coord_box + 1e-6) / 2.
         loss_wh    = tf.reduce_sum(tf.square(true_box_wh-pred_box_wh)     * coord_mask) / (nb_coord_box + 1e-6) / 2.
@@ -224,18 +226,18 @@ class YOLO(object):
         
         if self.debug:
             nb_true_box = tf.reduce_sum(y_true[..., 4])
-            nb_pred_box = tf.reduce_sum(tf.to_float(true_box_conf > 0.5) * tf.to_float(pred_box_conf > 0.3))
+            nb_pred_box = tf.reduce_sum(tf.compat.v1.to_float(true_box_conf > 0.5) * tf.compat.v1.to_float(pred_box_conf > 0.3))
             
             current_recall = nb_pred_box/(nb_true_box + 1e-6)
-            total_recall = tf.assign_add(total_recall, current_recall) 
+            total_recall = tf.compat.v1.assign_add(total_recall, current_recall) 
 
-            loss = tf.Print(loss, [loss_xy], message='Loss XY \t', summarize=1000)
-            loss = tf.Print(loss, [loss_wh], message='Loss WH \t', summarize=1000)
-            loss = tf.Print(loss, [loss_conf], message='Loss Conf \t', summarize=1000)
-            loss = tf.Print(loss, [loss_class], message='Loss Class \t', summarize=1000)
-            loss = tf.Print(loss, [loss], message='Total Loss \t', summarize=1000)
-            loss = tf.Print(loss, [current_recall], message='Current Recall \t', summarize=1000)
-            loss = tf.Print(loss, [total_recall/seen], message='Average Recall \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [loss_xy], message='Loss XY \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [loss_wh], message='Loss WH \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [loss_conf], message='Loss Conf \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [loss_class], message='Loss Class \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [loss], message='Total Loss \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [current_recall], message='Current Recall \t', summarize=1000)
+            loss = tf.compat.v1.Print(loss, [total_recall/seen], message='Average Recall \t', summarize=1000)
         
         return loss
 
